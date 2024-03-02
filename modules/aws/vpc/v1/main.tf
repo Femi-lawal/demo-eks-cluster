@@ -34,7 +34,7 @@ resource "aws_subnet" "public" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = merge(
-    var.default_tags, var.private_subnet_tags, {
+    var.default_tags, var.public_subnet_tags, {
       Name = "${var.vpc_name}-public-subnet-${count.index + 1}"
   })
 }

@@ -90,7 +90,7 @@ The Terraform code sets up the following AWS resources:
 
 ## Infrastructure Details
 
-- **VPC (`vpc.tf`):** Configures a VPC named `demo-vpc` with specified CIDR block, and sets up both public and private subnets across three availability zones. NAT Gateway is enabled for outbound internet access from private subnets.
+- **VPC (`vpc.tf`):** Configures a VPC named `demo-cluster-vpc` with specified CIDR block, and sets up both public and private subnets across three availability zones. NAT Gateway is enabled for outbound internet access from private subnets.
 
 - **EKS Cluster (`eks.tf`):** Deploys an EKS cluster within the created VPC, utilizing the private subnets for the managed node groups. The node groups are configured with specified instance types and scaling parameters.
 
