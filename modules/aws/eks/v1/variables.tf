@@ -52,3 +52,9 @@ variable "cluster_addons" {
   type        = list(string)
   default     = ["vpc-cni", "kube-proxy", "coredns", "aws-ebs-csi-driver"]
 }
+
+variable "enabled_cluster_log_types" {
+  description = "List of strings specifying cluster log types"
+  type        = list(string)
+  default     = ["audit", "api", "authenticator"]
+}
