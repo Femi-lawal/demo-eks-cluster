@@ -22,3 +22,23 @@ output "cluster_admins_arn" {
   description = "The ARN of the role for EKS cluster admins"
   value       = aws_iam_role.eks_admins_role.arn
 }
+
+output "cluster_certificate_authority_data" {
+  description = "The base64 encoded certificate data required to communicate with the cluster"
+  value       = base64decode(aws_eks_cluster.main.certificate_authority[0].data)
+}
+
+output "cluster_auth_token" {
+  description = "The token required to authenticate with the cluster"
+  value       = data.aws_eks_cluster_auth.main.token
+}
+
+output "oidc_provider_arn" {
+  description = "The OIDC ARN of the Cluster"
+  value       = aws_iam_openid_connect_provider.eks.arn
+}
+
+output "oidc_provider_id" {
+  description = "The OIDC ID of the Cluster"
+  value       = aws_iam_openid_connect_provider.eks.id
+}

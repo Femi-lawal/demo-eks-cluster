@@ -5,7 +5,7 @@ This module creates an Amazon EKS (Elastic Kubernetes Service) cluster with mana
 ## Prerequisites
 
 - Terraform v1.5.1
-- AWS provider version 5.20.0
+- AWS provider version 5.40.0
 - Kubernetes provider version 2.26.0
 
 ## Inputs

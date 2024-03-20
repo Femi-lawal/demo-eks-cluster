@@ -31,6 +31,11 @@ resource "aws_eks_cluster" "main" {
     resources = ["secrets"]
   }
 
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   depends_on = [
     aws_iam_role_policy_attachment.eks_cluster_policy,
   ]
@@ -148,7 +153,7 @@ resource "aws_eks_node_group" "main" {
 
   launch_template {
     id      = aws_launch_template.eks_node_group.id
-    version = "$Default"
+    version = "$Latest"
   }
 
   instance_types       = each.value.instance_types
@@ -166,10 +171,19 @@ resource "aws_launch_template" "eks_node_group" {
 
   vpc_security_group_ids = [aws_security_group.eks_nodes_sg.id]
 
+  # key_name = "terraform"
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      "Name" = "${var.cluster_name}-eks-node-group"
+    }
+  }
+
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 1
+    http_put_response_hop_limit = 2
     instance_metadata_tags      = "enabled"
   }
 
@@ -205,6 +219,15 @@ resource "aws_iam_openid_connect_provider" "eks" {
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
+}
+
+resource "aws_eks_identity_provider_config" "eks" {
+  cluster_name = aws_eks_cluster.main.name
+  oidc {
+    identity_provider_config_name = "oidc"
+    client_id                     = aws_iam_openid_connect_provider.eks.id
+    issuer_url                    = aws_eks_cluster.main.identity[0].oidc[0].issuer
+  }
 }
 
 ############################################################################################################
@@ -243,9 +266,9 @@ resource "aws_iam_role_policy_attachment" "eks_vpc_resource_controller_policy" {
   role       = aws_iam_role.eks_cluster_role.name
 }
 
-# Managed Node Group role
+# # Managed Node Group role
 resource "aws_iam_instance_profile" "eks_node" {
-  name = "eks_node"
+  name = "${var.cluster_name}-node-role"
   role = aws_iam_role.node_role.name
 }
 
@@ -356,6 +379,16 @@ resource "aws_security_group_rule" "eks_cluster_egress_kublet" {
   description              = "Allow control plane to node egress for kubelet"
 }
 
+resource "aws_security_group_rule" "eks_cluster_egress_nginx" {
+  type                     = "egress"
+  from_port                = 8443
+  to_port                  = 8443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.eks_cluster_sg.id
+  source_security_group_id = aws_security_group.eks_nodes_sg.id
+  description              = "Allow control plane to node egress for nginx"
+}
+
 # Node Security group
 resource "aws_security_group" "eks_nodes_sg" {
   name        = "${var.cluster_name}-eks-nodes-sg"
@@ -378,6 +411,16 @@ resource "aws_security_group" "eks_nodes_sg" {
 #   source_security_group_id = aws_security_group.eks_cluster_sg.id
 #   description              = "Allow worked node to control plane/Kubernetes API egress for HTTPS"
 # }
+
+resource "aws_security_group_rule" "worker_node_ingress_nginx" {
+  type                     = "ingress"
+  from_port                = 8443
+  to_port                  = 8443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.eks_nodes_sg.id
+  source_security_group_id = aws_security_group.eks_cluster_sg.id
+  description              = "Allow control plane to node ingress for nginx"
+}
 
 resource "aws_security_group_rule" "worker_node_to_worker_node_ingress_coredns_tcp" {
   type              = "ingress"
@@ -484,6 +527,11 @@ resource "kubernetes_config_map" "aws_auth" {
         rolearn  = aws_iam_role.eks_admins_role.arn
         username = aws_iam_role.eks_admins_role.name
         groups   = ["system:masters"]
+      },
+      {
+        rolearn  = aws_iam_role.node_role.arn
+        username = "system:node:{{EC2PrivateDNSName}}"
+        groups   = ["system:bootstrappers", "system:nodes"]
       }
     ])
     mapUsers = yamlencode([
