@@ -201,7 +201,8 @@ data "aws_iam_policy_document" "karpenter_controller_policy" {
     sid    = "AllowInstanceProfileReadActions"
     effect = "Allow"
     actions = [
-      "iam:GetInstanceProfile"
+      "iam:GetInstanceProfile",
+      "iam:ListInstanceProfiles"
     ]
     resources = [
       "arn:aws:iam::*:instance-profile/*"

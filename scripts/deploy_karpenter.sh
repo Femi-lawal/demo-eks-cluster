@@ -6,10 +6,10 @@ REGION=$(terraform output -raw aws_region)
 CLUSTER_NAME=$(terraform output -raw cluster_name)
 KARPENTER_ROLE_ARN=$(terraform output -raw karpenter_controller_role_arn)
 CLUSTER_ENDPOINT=$(terraform output -raw cluster_endpoint)
-NODE_INSTANCE_ROLE_ARN=$(terraform output -raw node_instance_role_arn)
+NODE_INSTANCE_PROFILE_NAME=$(terraform output -raw node_instance_profile_name)
 
-# Extract the role name from the ARN
-NODE_INSTANCE_ROLE_NAME=$(echo $NODE_INSTANCE_ROLE_ARN | awk -F'/' '{print $NF}')
+# NOTE: In Karpenter v1.7.0+, EC2NodeClass uses the IAM role name directly
+# The role field expects the IAM role name, not the instance profile ARN
 
 # Update kubeconfig
 aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME
@@ -28,27 +28,26 @@ metadata:
     eks.amazonaws.com/role-arn: $KARPENTER_ROLE_ARN
 EOF
 
-# Install Karpenter using Helm
-export KARPENTER_VERSION="0.16.3"
+# Install Karpenter using Helm with OCI registry
+export KARPENTER_VERSION="1.7.0"
 
-helm repo add karpenter https://charts.karpenter.sh/ || true
-helm repo update
+# Logout and login to ECR public registry to ensure fresh authentication
+aws ecr-public get-login-password --region us-east-1 | helm registry login --username AWS --password-stdin public.ecr.aws || true
 
-helm upgrade --install karpenter karpenter/karpenter \
+helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
   --namespace karpenter \
   --create-namespace \
   --version ${KARPENTER_VERSION} \
   --set serviceAccount.create=false \
   --set serviceAccount.name=karpenter \
-  --set clusterName=${CLUSTER_NAME} \
-  --set clusterEndpoint=${CLUSTER_ENDPOINT} \
-  --set aws.defaultInstanceProfile=${NODE_INSTANCE_ROLE_NAME} \
+  --set settings.clusterName=${CLUSTER_NAME} \
+  --set settings.clusterEndpoint=${CLUSTER_ENDPOINT} \
   --set controller.resources.requests.cpu=500m \
   --set controller.resources.requests.memory=512Mi \
   --set controller.resources.limits.cpu=1 \
   --set controller.resources.limits.memory=1Gi \
   --set replicas=1 \
-  --wait || true
+  --wait
 
 # Wait for Karpenter to be ready
 kubectl wait --for=condition=available --timeout=300s deployment/karpenter -n karpenter || true
@@ -57,19 +56,27 @@ kubectl wait --for=condition=available --timeout=300s deployment/karpenter -n ka
 echo "Waiting 30 seconds for Karpenter webhook endpoints to be ready..."
 sleep 30
 
-# Create EC2NodeClass
+# Get AWS Account ID for EC2NodeClass
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+NODE_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/$(echo ${NODE_INSTANCE_PROFILE_NAME})"
+
+# Create EC2NodeClass (v1 API) - replaces AWSNodeTemplate
 cat <<EOF | kubectl apply -f -
-apiVersion: karpenter.k8s.aws/v1alpha1
-kind: AWSNodeTemplate
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
 metadata:
-  name: default
+  name: karpenter-default
 spec:
   amiFamily: AL2
-  instanceProfile: ${NODE_INSTANCE_ROLE_NAME}
-  subnetSelector:
-    karpenter.sh/discovery: ${CLUSTER_NAME}
-  securityGroupSelector:
-    karpenter.sh/discovery: ${CLUSTER_NAME}
+  amiSelectorTerms:
+    - alias: al2@latest
+  role: "${NODE_INSTANCE_PROFILE_NAME}"  # In v1, we specify the IAM role name
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${CLUSTER_NAME}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: ${CLUSTER_NAME}
   tags:
     karpenter.sh/discovery: ${CLUSTER_NAME}
 EOF

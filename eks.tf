@@ -6,7 +6,7 @@ module "eks" {
   private_subnets     = module.vpc.private_subnets
   public_subnets      = module.vpc.public_subnets
   vpc_id              = module.vpc.vpc_id
-  eks_cluster_version = "1.31"
+  eks_cluster_version = "1.31" # Required for Karpenter 0.16.3 compatibility
 
   managed_node_groups = {
     demo_group = {

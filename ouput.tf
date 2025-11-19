@@ -22,3 +22,8 @@ output "node_instance_role_arn" {
   description = "The ARN of the node instance role"
   value       = module.eks.node_instance_role_arn
 }
+
+output "node_instance_profile_name" {
+  description = "The name of the node instance profile (required for Karpenter)"
+  value       = module.eks.node_instance_profile_name
+}

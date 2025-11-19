@@ -52,3 +52,8 @@ output "node_instance_role_arn" {
   description = "The ARN of the node instance role"
   value       = aws_iam_role.node_role.arn
 }
+
+output "node_instance_profile_name" {
+  description = "The name of the IAM instance profile for nodes"
+  value       = aws_iam_instance_profile.eks_node.name
+}
