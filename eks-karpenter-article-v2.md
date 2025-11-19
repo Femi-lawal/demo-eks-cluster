@@ -147,9 +147,9 @@ output "node_instance_role_arn" {
 
 ### Update VPC and EKS Configuration
 
-**Important:** Karpenter needs to discover subnets and security groups using tags. We must add the `karpenter.sh/discovery` tag to both public and private subnets, as well as to the node security group.
+**Critical:** Karpenter needs to discover subnets and security groups using tags. **Only private subnets should be tagged** - if public subnets are tagged, Karpenter may provision nodes without public IPs that cannot reach the cluster.
 
-Update `vpc.tf` to add Karpenter discovery tags to subnets:
+Update `vpc.tf` to add Karpenter discovery tags to **private subnets only**:
 
 ```terraform
 module "vpc" {
@@ -166,13 +166,13 @@ module "vpc" {
   public_subnet_tags = {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/elb"                    = "1"
-    "karpenter.sh/discovery"                    = var.cluster_name  # Add this tag
+    # DO NOT add karpenter.sh/discovery tag to public subnets
   }
 
   private_subnet_tags = {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/internal-elb"           = "1"
-    "karpenter.sh/discovery"                    = var.cluster_name  # Add this tag
+    "karpenter.sh/discovery"                    = var.cluster_name  # Add this tag to private subnets only
   }
 }
 ```
@@ -970,10 +970,20 @@ no subnets matched selector map[karpenter.sh/discovery:demo-cluster]
 ```
 
 Ensure you've added the `karpenter.sh/discovery` tags to:
-1. Your VPC subnets (both public and private)
+1. Your VPC **private subnets only** (not public subnets)
 2. Your EKS cluster security group
 
 The tags must be on the actual AWS resources, not just the launch template.
+
+### Nodes Stuck in NotReady State
+
+If Karpenter provisions nodes that never become Ready (kubelet never starts):
+
+1. **Check subnet type**: Nodes must be in **private subnets** with NAT gateway access. If nodes are provisioned in public subnets without public IPs, they cannot reach the EKS API server.
+2. **Verify tags**: Only tag private subnets with `karpenter.sh/discovery`. If public subnets are tagged, Karpenter may use them.
+3. **Check security groups**: Ensure the node security group allows communication with the EKS control plane.
+
+Solution: Remove `karpenter.sh/discovery` tag from public subnets and delete/recreate stuck nodes.
 
 ### Terraform Version Issues
 
