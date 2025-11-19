@@ -58,3 +58,25 @@ variable "enabled_cluster_log_types" {
   type        = list(string)
   default     = ["audit", "api", "authenticator"]
 }
+
+variable "eks_cluster_version" {
+  description = "Kubernetes version for the EKS cluster"
+  type        = string
+  default     = null
+}
+
+variable "additional_role_mappings" {
+  description = "Additional IAM role mappings for aws-auth ConfigMap"
+  type = list(object({
+    rolearn  = string
+    username = string
+    groups   = list(string)
+  }))
+  default = []
+}
+
+variable "additional_launch_template_tags" {
+  description = "Additional tags to add to the launch template"
+  type        = map(string)
+  default     = {}
+}

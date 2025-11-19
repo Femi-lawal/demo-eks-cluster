@@ -16,6 +16,7 @@ resource "aws_eks_cluster" "main" {
   name                      = var.cluster_name
   role_arn                  = aws_iam_role.eks_cluster_role.arn
   enabled_cluster_log_types = var.enabled_cluster_log_types
+  version                   = var.eks_cluster_version
 
   vpc_config {
     subnet_ids             = concat(var.private_subnets, var.public_subnets)
@@ -197,10 +198,13 @@ resource "aws_launch_template" "eks_node_group" {
     }
   }
 
-  tags = {
-    "Name"                                      = "${var.cluster_name}-eks-node-group"
-    "kubernetes.io/cluster/${var.cluster_name}" = "owned"
-  }
+  tags = merge(
+    {
+      "Name"                                      = "${var.cluster_name}-eks-node-group"
+      "kubernetes.io/cluster/${var.cluster_name}" = "owned"
+    },
+    var.additional_launch_template_tags
+  )
 
   lifecycle {
     create_before_destroy = true
@@ -221,14 +225,17 @@ resource "aws_iam_openid_connect_provider" "eks" {
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
-resource "aws_eks_identity_provider_config" "eks" {
-  cluster_name = aws_eks_cluster.main.name
-  oidc {
-    identity_provider_config_name = "oidc"
-    client_id                     = aws_iam_openid_connect_provider.eks.id
-    issuer_url                    = aws_eks_cluster.main.identity[0].oidc[0].issuer
-  }
-}
+# Commented out due to error: Identity Provider URL cannot be same as OIDC issuer URL
+# This resource is not required for Karpenter to function
+# resource "aws_eks_identity_provider_config" "eks" {
+#   cluster_name = aws_eks_cluster.main.name
+#   oidc {
+#     identity_provider_config_name = "oidc"
+#     client_id                     = aws_iam_openid_connect_provider.eks.id
+#     issuer_url                    = aws_eks_cluster.main.identity[0].oidc[0].issuer
+#   }
+# }
+
 
 ############################################################################################################
 ### IAM ROLES
@@ -395,10 +402,13 @@ resource "aws_security_group" "eks_nodes_sg" {
   description = "Security group for all nodes in the cluster"
   vpc_id      = var.vpc_id
 
-  tags = {
-    Name                                        = "${var.cluster_name}-eks-nodes-sg"
-    "kubernetes.io/cluster/${var.cluster_name}" = "owned"
-  }
+  tags = merge(
+    {
+      Name                                        = "${var.cluster_name}-eks-nodes-sg"
+      "kubernetes.io/cluster/${var.cluster_name}" = "owned"
+    },
+    var.additional_launch_template_tags
+  )
 }
 
 # Unneccessary because all outbound traffic from worker nodes is allowed by worker_node_egress_internet rule
@@ -522,18 +532,21 @@ resource "kubernetes_config_map" "aws_auth" {
   }
 
   data = {
-    mapRoles = yamlencode([
-      {
-        rolearn  = aws_iam_role.eks_admins_role.arn
-        username = aws_iam_role.eks_admins_role.name
-        groups   = ["system:masters"]
-      },
-      {
-        rolearn  = aws_iam_role.node_role.arn
-        username = "system:node:{{EC2PrivateDNSName}}"
-        groups   = ["system:bootstrappers", "system:nodes"]
-      }
-    ])
+    mapRoles = yamlencode(concat(
+      [
+        {
+          rolearn  = aws_iam_role.eks_admins_role.arn
+          username = aws_iam_role.eks_admins_role.name
+          groups   = ["system:masters"]
+        },
+        {
+          rolearn  = aws_iam_role.node_role.arn
+          username = "system:node:{{EC2PrivateDNSName}}"
+          groups   = ["system:bootstrappers", "system:nodes"]
+        }
+      ],
+      var.additional_role_mappings
+    ))
     mapUsers = yamlencode([
       {
         userarn  = data.aws_caller_identity.current.arn

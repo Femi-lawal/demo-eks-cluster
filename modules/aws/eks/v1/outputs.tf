@@ -42,3 +42,13 @@ output "oidc_provider_id" {
   description = "The OIDC ID of the Cluster"
   value       = aws_iam_openid_connect_provider.eks.id
 }
+
+output "oidc_provider_url" {
+  description = "The OIDC URL of the Cluster"
+  value       = aws_iam_openid_connect_provider.eks.url
+}
+
+output "node_instance_role_arn" {
+  description = "The ARN of the node instance role"
+  value       = aws_iam_role.node_role.arn
+}

@@ -1,5 +1,5 @@
 terraform {
-  required_version = "1.5.1"
+  required_version = ">= 1.5.1"
 
   required_providers {
     aws = {
@@ -14,14 +14,6 @@ terraform {
       source  = "alekc/kubectl"
       version = ">= 2.0"
     }
-  }
-
-  backend "s3" {
-    bucket         = ""
-    key            = ""
-    region         = ""
-    dynamodb_table = ""
-    encrypt        = true
   }
 }
 
